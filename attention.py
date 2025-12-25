@@ -31,11 +31,24 @@ def attention(
     # TODO: Implement scaled dot-product attention
     # Steps:
     # 1. Compute attention scores: Q @ K^T
+    scores = np.matmul(query, np.swapaxes(key, -2, -1))
     # 2. Scale by 1/sqrt(d_k) or provided scale factor
+    if scale is None:
+        scale = 1.0 / np.sqrt(query.shape[-1])
+    scores *= scale
     # 3. Apply mask if provided (set masked positions to -inf)
+    if mask is not None:
+        scores = np.where(mask == 0, float('-inf'), scores)
     # 4. Apply softmax to get attention weights
+    def softmax(x):
+        """Compute softmax values for each sets of scores in x."""
+        # Subtracting the max for numerical stability
+        e_x = np.exp(x - np.max(x, axis=-1, keepdims=True))
+        return e_x / np.sum(e_x, axis=-1, keepdims=True)
+
+    attention_weights = softmax(scores)
     # 5. Apply attention weights to values: weights @ V
-    
-    raise NotImplementedError("Please implement the attention function")
+    output = attention_weights @ value
+    return (output, attention_weights)
 
 
