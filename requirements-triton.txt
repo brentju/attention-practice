@@ -1,0 +1,7 @@
+# Additional requirements for Triton-based tests (Phase 2+)
+# Note: Triton is only available on Linux with CUDA-capable GPUs
+# Install with: pip install triton>=2.0.0
+# Or use: pip install -r requirements.txt -r requirements-triton.txt
+
+triton>=2.0.0
+

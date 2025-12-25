@@ -329,16 +329,20 @@ class TestAttentionPyTorchAPI:
         value = torch.randn(batch_size, seq_len, d_v)
         
         # Create causal mask (upper triangular)
-        causal_mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool()
-        causal_mask = causal_mask.unsqueeze(0).expand(batch_size, -1, -1)
+        # triu with diagonal=1 gives True for positions above diagonal (future positions)
+        # PyTorch's attn_mask expects False for masked positions
+        causal_mask_bool = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool()
+        causal_mask_bool = causal_mask_bool.unsqueeze(0).expand(batch_size, -1, -1)
         
-        # PyTorch reference
+        # PyTorch reference: attn_mask expects False for masked positions
+        # causal_mask_bool has True for future positions (to mask), so invert it
         ref_output = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=causal_mask
+            query, key, value, attn_mask=~causal_mask_bool
         )
         
-        # Custom implementation (invert mask: 1 for valid, 0 for masked)
-        mask_numpy = (~causal_mask).float().numpy()
+        # Custom implementation expects mask where 1 = valid, 0 = masked
+        # causal_mask_bool has True for future positions (to mask), so invert it
+        mask_numpy = (~causal_mask_bool).float().numpy()
         custom_output, _ = attention(
             query.numpy(), key.numpy(), value.numpy(), mask=mask_numpy
         )
@@ -354,14 +358,21 @@ class TestAttentionPyTorchAPI:
         key = torch.randn(batch_size, seq_len, d_k)
         value = torch.randn(batch_size, seq_len, d_v)
         
-        causal_mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool()
-        causal_mask = causal_mask.unsqueeze(0).expand(batch_size, -1, -1)
+        # Create causal mask (upper triangular)
+        # triu with diagonal=1 gives True for positions above diagonal (future positions)
+        # PyTorch's attn_mask expects False for masked positions
+        causal_mask_bool = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool()
+        causal_mask_bool = causal_mask_bool.unsqueeze(0).expand(batch_size, -1, -1)
         
+        # PyTorch reference: attn_mask expects False for masked positions
+        # causal_mask_bool has True for future positions (to mask), so invert it
         ref_output = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=causal_mask
+            query, key, value, attn_mask=~causal_mask_bool
         )
         
-        mask_numpy = (~causal_mask).float().numpy()
+        # Custom implementation expects mask where 1 = valid, 0 = masked
+        # causal_mask_bool has True for future positions (to mask), so invert it
+        mask_numpy = (~causal_mask_bool).float().numpy()
         custom_output, _ = attention(
             query.numpy(), key.numpy(), value.numpy(), mask=mask_numpy
         )
@@ -493,11 +504,12 @@ class TestAttentionGradients:
         key = torch.randn(batch_size, seq_len, d_k, requires_grad=True)
         value = torch.randn(batch_size, seq_len, d_v, requires_grad=True)
         
-        causal_mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool()
-        causal_mask = causal_mask.unsqueeze(0).expand(batch_size, -1, -1)
+        causal_mask_bool = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool()
+        causal_mask_bool = causal_mask_bool.unsqueeze(0).expand(batch_size, -1, -1)
         
+        # PyTorch's attn_mask expects False for masked positions
         output_ref = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=causal_mask
+            query, key, value, attn_mask=~causal_mask_bool
         )
         loss_ref = output_ref.sum()
         loss_ref.backward()
@@ -512,18 +524,24 @@ class TestAttentionGradients:
         batch_size, seq_len, d_k, d_v = 2, 10, 8, 8
         
         # Use larger values to test numerical stability
-        query = torch.randn(batch_size, seq_len, d_k, requires_grad=True) * 2.0
-        key = torch.randn(batch_size, seq_len, d_k, requires_grad=True) * 2.0
-        value = torch.randn(batch_size, seq_len, d_v, requires_grad=True) * 2.0
+        # Create leaf tensors directly with the scaled values
+        query = torch.randn(batch_size, seq_len, d_k, requires_grad=True)
+        key = torch.randn(batch_size, seq_len, d_k, requires_grad=True)
+        value = torch.randn(batch_size, seq_len, d_v, requires_grad=True)
         
-        output_ref = F.scaled_dot_product_attention(query, key, value)
+        # Scale the values (this creates non-leaf tensors, but that's okay for the test)
+        query_scaled = query * 2.0
+        key_scaled = key * 2.0
+        value_scaled = value * 2.0
+        
+        output_ref = F.scaled_dot_product_attention(query_scaled, key_scaled, value_scaled)
         loss_ref = output_ref.sum()
         loss_ref.backward()
         
-        # Check that gradients are finite
-        assert torch.isfinite(query.grad).all()
-        assert torch.isfinite(key.grad).all()
-        assert torch.isfinite(value.grad).all()
+        # Check that gradients are finite (they should be on the leaf tensors)
+        assert query.grad is not None and torch.isfinite(query.grad).all()
+        assert key.grad is not None and torch.isfinite(key.grad).all()
+        assert value.grad is not None and torch.isfinite(value.grad).all()
 
 
 if __name__ == "__main__":

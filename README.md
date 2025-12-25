@@ -10,7 +10,15 @@ Install the required dependencies:
 pip install -r requirements.txt
 ```
 
-Note: Triton requires CUDA-capable GPU. Tests will skip if Triton is not available.
+**Note:** Triton is only available on Linux with CUDA-capable GPUs. If you're on macOS or don't have CUDA, you can still run Phase 1 tests. Triton tests will automatically skip if Triton is not available.
+
+For Phase 2+ (Triton kernels), install Triton separately on a Linux system with CUDA:
+
+```bash
+pip install triton>=2.0.0
+# Or use the optional requirements file:
+pip install -r requirements.txt -r requirements-triton.txt
+```
 
 ## Test Files Overview
 
